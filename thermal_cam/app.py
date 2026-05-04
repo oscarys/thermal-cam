@@ -303,7 +303,6 @@ class MainWindow(QMainWindow):
         vb.setAspectLocked(True)
         vb.setMouseEnabled(False, False)
         vb.invertY(False)
-        vb.disableAutoRange()
 
         self._img_item = pg.ImageItem()
         vb.addItem(self._img_item)
@@ -510,6 +509,14 @@ class MainWindow(QMainWindow):
 
         self._img_item.setImage(rgba.transpose(1, 0, 2))
         self._last_rgba = rgba
+
+        # Lock the view range after first frame so crosshair never triggers rescale
+        if not hasattr(self, '_range_locked'):
+            iw = rgba.shape[1]
+            ih = rgba.shape[0]
+            self._vb.setRange(xRange=(0, iw), yRange=(0, ih), padding=0)
+            self._vb.disableAutoRange()
+            self._range_locked = True
 
         self._colorbar.update_range(mn, mx)
         self._lbl_min.setText("Min: {:.2f} C".format(mn))
