@@ -303,6 +303,7 @@ class MainWindow(QMainWindow):
         vb.setAspectLocked(True)
         vb.setMouseEnabled(False, False)
         vb.invertY(False)
+        vb.disableAutoRange()
 
         self._img_item = pg.ImageItem()
         vb.addItem(self._img_item)
@@ -558,7 +559,6 @@ class MainWindow(QMainWindow):
         frame  = self._last_frame
         h, w   = frame.shape
 
-        # In bilinear mode the image is 16x upscaled; normalise back to 32x24
         img_h, img_w = self._img_item.image.shape[:2] if self._img_item.image is not None else (h, w)
         scale_x = img_w / w
         scale_y = img_h / h
@@ -569,7 +569,13 @@ class MainWindow(QMainWindow):
         if 0 <= col < w and 0 <= row < h:
             self._crosshair_h.setPos(mapped.y())
             self._crosshair_v.setPos(mapped.x())
+            self._crosshair_h.setVisible(True)
+            self._crosshair_v.setVisible(True)
             self._lbl_cur.setText("Cursor: {:.2f} C".format(frame[row, col]))
+        else:
+            self._crosshair_h.setVisible(False)
+            self._crosshair_v.setVisible(False)
+            self._lbl_cur.setText("Cursor: --")
 
     # -- save ------------------------------------------------------------------
 
