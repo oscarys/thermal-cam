@@ -554,16 +554,21 @@ class MainWindow(QMainWindow):
     def _on_mouse_move(self, pos):
         if self._last_frame is None:
             return
-        vb   = self._vb
-        mapped = vb.mapSceneToView(pos)
+        mapped = self._vb.mapSceneToView(pos)
         frame  = self._last_frame
         h, w   = frame.shape
-        # image is transposed in pyqtgraph
-        col = int(mapped.x())
-        row = int(mapped.y())
+
+        # In bilinear mode the image is 16x upscaled; normalise back to 32x24
+        img_h, img_w = self._img_item.image.shape[:2] if self._img_item.image is not None else (h, w)
+        scale_x = img_w / w
+        scale_y = img_h / h
+
+        col = int(mapped.x() / scale_x)
+        row = int(mapped.y() / scale_y)
+
         if 0 <= col < w and 0 <= row < h:
-            self._crosshair_h.setPos(row)
-            self._crosshair_v.setPos(col)
+            self._crosshair_h.setPos(mapped.y())
+            self._crosshair_v.setPos(mapped.x())
             self._lbl_cur.setText("Cursor: {:.2f} C".format(frame[row, col]))
 
     # -- save ------------------------------------------------------------------
