@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+thermal_captures/
+*.npz
+*.csv
+*.png
