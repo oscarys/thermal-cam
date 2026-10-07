@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSlot
 from PyQt6.QtGui import QAction, QFont, QColor
+from PyQt6.QtWidgets import QGraphicsEllipseItem
 
 from .reader    import FrameReader
 from .colormaps import COLORMAPS
@@ -278,6 +279,14 @@ class MainWindow(QMainWindow):
         self._act_disconnect.triggered.connect(self._connect_stop)
         self._act_settings.triggered.connect(self._open_settings)
 
+        # View
+        vm = mb.addMenu("View")
+        self._act_oval = QAction("Face oval guide", self)
+        self._act_oval.setCheckable(True)
+        self._act_oval.setChecked(True)
+        self._act_oval.triggered.connect(self._toggle_oval)
+        vm.addAction(self._act_oval)
+
         # Help
         hm = mb.addMenu("Help")
         act_about = QAction("About", self)
@@ -299,26 +308,45 @@ class MainWindow(QMainWindow):
 
         self._img_widget = pg.GraphicsLayoutWidget()
         self._img_widget.setMinimumSize(512, 384)
+        self._img_widget.ci.layout.setContentsMargins(0, 0, 0, 0)
+        self._img_widget.ci.layout.setSpacing(0)
         vb = self._img_widget.addViewBox()
         vb.setAspectLocked(True)
         vb.setMouseEnabled(False, False)
         vb.invertY(False)
+        vb.setDefaultPadding(0)
 
         self._img_item = pg.ImageItem()
         vb.addItem(self._img_item)
 
-        # crosshair
+        # crosshair — hidden until the first frame sets the display-space centre
         self._crosshair_h = pg.InfiniteLine(angle=0, pen=pg.mkPen("#ffffff40", width=1))
         self._crosshair_v = pg.InfiniteLine(angle=90, pen=pg.mkPen("#ffffff40", width=1))
+        self._crosshair_h.setVisible(False)
+        self._crosshair_v.setVisible(False)
         vb.addItem(self._crosshair_h)
         vb.addItem(self._crosshair_v)
         self._img_item.scene().sigMouseMoved.connect(self._on_mouse_move)
         self._vb = vb
 
-        self._colorbar = ColorbarWidget()
+        # Face-positioning oval guide — drawn in ViewBox image coordinates.
+        # Coordinates are in 32x24 pixel space (matching the sensor frame).
+        # The oval is a pure UI overlay: it lives only in the graphics scene
+        # and never touches _last_rgba, so it never appears in saves or recordings.
+        #
+        # Portrait oval centred on the 32x24 frame:
+        #   x = 8  (left edge, 8 pixels from left)
+        #   y = 2  (top edge, 2 pixels from top)
+        #   w = 16 (width in sensor pixels)
+        #   h = 20 (height in sensor pixels)
+        self._oval_item = QGraphicsEllipseItem(8, 2, 16, 20)
+        oval_pen = pg.mkPen(color="#00ff88", width=1.5, style=Qt.PenStyle.DashLine)
+        self._oval_item.setPen(oval_pen)
+        self._oval_item.setBrush(pg.mkBrush(None))
+        self._oval_item.setZValue(10)   # on top of crosshairs
+        vb.addItem(self._oval_item)
 
-        left.addWidget(self._img_widget, stretch=1)
-        left.addWidget(self._colorbar)
+        self._colorbar = ColorbarWidget()
 
         # -- right: controls ---------------------------------------------------
         right = QVBoxLayout()
@@ -399,11 +427,14 @@ class MainWindow(QMainWindow):
         right.addWidget(save_box)
         right.addStretch()
 
+        left.addWidget(self._img_widget, stretch=1)
+        left.addWidget(self._colorbar)
+
         root.addLayout(left, stretch=1)
         right_widget = QWidget()
         right_widget.setFixedWidth(180)
         right_widget.setLayout(right)
-        root.addWidget(right_widget)
+        root.addWidget(right_widget, stretch=0)
 
         # status bar
         self._status = QStatusBar()
@@ -517,6 +548,15 @@ class MainWindow(QMainWindow):
             self._vb.setRange(xRange=(0, iw), yRange=(0, ih), padding=0)
             self._vb.disableAutoRange()
             self._range_locked = True
+            # Place crosshairs at the image centre in display-pixel space and show them
+            self._crosshair_h.setPos(ih / 2.0)
+            self._crosshair_v.setPos(iw / 2.0)
+            self._crosshair_h.setVisible(True)
+            self._crosshair_v.setVisible(True)
+            # Scale the oval from sensor-pixel space (32x24) to display-pixel space
+            sx = iw / 32.0
+            sy = ih / 24.0
+            self._oval_item.setRect(8 * sx, 2 * sy, 16 * sx, 20 * sy)
 
         self._colorbar.update_range(mn, mx)
         self._lbl_min.setText("Min: {:.2f} C".format(mn))
@@ -629,6 +669,11 @@ class MainWindow(QMainWindow):
             self._rec_btn.style().unpolish(self._rec_btn)
             self._rec_btn.style().polish(self._rec_btn)
 
+    # -- oval toggle -----------------------------------------------------------
+
+    def _toggle_oval(self, checked: bool):
+        self._oval_item.setVisible(checked)
+
     # -- about -----------------------------------------------------------------
 
     def _show_about(self):
@@ -640,6 +685,14 @@ class MainWindow(QMainWindow):
             "M.Sc. Oscar Yanez Suarez\n\n"
             "GPL-3.0"
         )
+
+    # -- resize: keep image widget at 4:3 so no dead space appears ------------
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        h = self._img_widget.height()
+        if h > 0:
+            self._img_widget.setMaximumWidth(h * 4 // 3)
 
     # -- close -----------------------------------------------------------------
 
