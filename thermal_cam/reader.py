@@ -91,7 +91,16 @@ class FrameReader(QObject):
                 # --- parse pixels (skip 2 type bytes) ---
                 raw = np.frombuffer(buf, dtype='<i2', count=PIXELS, offset=2)
                 frame = raw.astype(np.float32) / 100.0
-                print("Frame OK min={:.1f} max={:.1f}".format(frame.min(), frame.max()))
+
+                # Sanity check: a false-sync on pixel data produces values far
+                # outside any physically reachable scene temperature.
+                # MLX90640 rated range is -40..+300 C; tighten to -20..+100 C
+                # for typical lab / clinical use to catch mis-framed data early.
+                mn, mx = float(frame.min()), float(frame.max())
+                if mn < -20.0 or mx > 100.0:
+                    print("Frame rejected (false sync?) min={:.1f} max={:.1f}".format(mn, mx))
+                    continue
+
                 self.frame_ready.emit(frame.reshape(24, 32))
 
         except Exception as e:
